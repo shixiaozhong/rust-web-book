@@ -1,6 +1,7 @@
 #![warn(clippy::all)]
 
 use handle_errors::return_error;
+use tracing_subscriber::fmt::format::FmtSpan;
 use warp::{http::Method, Filter};
 
 mod routes;
@@ -9,9 +10,45 @@ mod types;
 
 #[tokio::main]
 async fn main() {
+    // log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
+
+    // log::error!("This is an error");
+    // log::debug!("This is debug");
+    // log::info!("This is info");
+
+    // // 自定义log
+    // let log = warp::log::custom(|info| {
+    //     log::info!(
+    //         "{} {} {} {:?} from {} with {:?}",
+    //         info.method(),
+    //         info.path(),
+    //         info.status(),
+    //         // 获取请求时间
+    //         info.elapsed(),
+    //         // 获取请求来源
+    //         info.remote_addr().unwrap(),
+    //         // 获取请求头
+    //         info.request_headers()
+    //     );
+    // });
+
+    // 定义一个log_filter
+    let log_filter =
+        std::env::var("RUST_LOG").unwrap_or_else(|_| "rust_web_book=info,warp=error".to_owned());
+
+    tracing_subscriber::fmt()
+        // 使用上面的过滤器来决定记录哪些追踪
+        .with_env_filter(log_filter)
+        // 在每个span关闭时记录event，可以用来记录路由执行的时间
+        .with_span_events(FmtSpan::CLOSE)
+        .init();
+
     // 创建内部共享存储
     let store = store::Store::new();
     let store_filter = warp::any().map(move || store.clone());
+
+    // 创建一个uuid
+    // let id_filter = warp::any().map(|| uuid::Uuid::new_v4().to_string());
 
     // cors，处理跨域问题
     let cors = warp::cors()
@@ -25,7 +62,10 @@ async fn main() {
         .and(warp::path::end())
         .and(warp::query())
         .and(store_filter.clone())
-        .and_then(routes::question::get_questions);
+        .and_then(routes::question::get_questions)
+        .with(warp::trace(|info| {
+            tracing::info_span!("get_questions request", method = %info.method(), path = %info.path(), id = %uuid::Uuid::new_v4())
+        }));
 
     // put
     let update_question = warp::put()
@@ -67,9 +107,10 @@ async fn main() {
         .or(add_answer)
         .or(delete_question)
         .with(cors)
+        .with(warp::trace::request())
         //为路由链中可能发生的错误（Rejection 或自定义错误）提供统一的恢复（Recovery）和转换逻辑
         .recover(return_error);
 
     // 启动服务
-    warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
+    warp::serve(routes).run(([127, 0, 0, 1], 8080)).await;
 }
