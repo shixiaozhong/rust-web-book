@@ -1,0 +1,13 @@
+[package]
+name = "rust-web-book"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+tokio = { version = "1.44.1", features = ["full"] }
+warp = "0.3.7"
+
+# 本地导入
+handle-errors = { path = "handle-errors" }
